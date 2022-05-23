@@ -66,38 +66,31 @@ type PoolMetaData struct {
 }
 
 func main() {
-	lunaTotalSupply := bankGenState.GetSupply().AmountOf(LUNADenom)
-	ustTotalSupply := bankGenState.GetSupply().AmountOf(USTDenom)
-	pool2TotalSupply := bankGenState.GetSupply().AmountOf(Pool2CoinDenom)
-	pool4TotalSupply := bankGenState.GetSupply().AmountOf(Pool4CoinDenom)
-	pool5TotalSupply := bankGenState.GetSupply().AmountOf(Pool5CoinDenom)
-	pool6TotalSupply := bankGenState.GetSupply().AmountOf(Pool6CoinDenom)
-
-	// pairIdByPair is a cache to store all pairs
-	pairIdByPair := map[uint64]liquiditytypes.Pair{} // PairId => Pair
+	// pairById is a cache to store all pairs
+	pairById := map[uint64]liquiditytypes.Pair{} // PairId => Pair
 	for _, pair := range liquidityGenState.Pairs {
-		pairIdByPair[pair.Id] = pair
+		pairById[pair.Id] = pair
 	}
 
-	// poolCoinDenomByPool is a cache to store all pools
-	poolCoinDenomByPool := map[string]liquiditytypes.Pool{} // PoolCoinDenom => Pool
+	// poolByPoolCoinDenom is a cache to store all pools
+	poolByPoolCoinDenom := map[string]liquiditytypes.Pool{} // PoolCoinDenom => Pool
 	for _, pool := range liquidityGenState.Pools {
-		poolCoinDenomByPool[pool.PoolCoinDenom] = pool
+		poolByPoolCoinDenom[pool.PoolCoinDenom] = pool
 	}
 
-	// poolReserveAddressByBasicPool is a cache that stores BasicPool for each pool reserve account
-	poolReserveAddressByBasicPool := map[string]PoolMetaData{} // ReserveAddress => PoolMetaData
+	// basicPoolByReserveAddress is a cache that stores BasicPool for each pool reserve account
+	basicPoolByReserveAddress := map[string]PoolMetaData{} // ReserveAddress => PoolMetaData
 	for _, balance := range bankGenState.GetBalances() {
-		for _, pool := range poolCoinDenomByPool {
+		for _, pool := range poolByPoolCoinDenom {
 			if balance.Address == pool.ReserveAddress {
-				pair := pairIdByPair[pool.PairId]
+				pair := pairById[pool.PairId]
 				spendable := balance.GetCoins()
 				rx := sdk.NewCoin(pair.QuoteCoinDenom, spendable.AmountOf(pair.QuoteCoinDenom))
 				ry := sdk.NewCoin(pair.BaseCoinDenom, spendable.AmountOf(pair.BaseCoinDenom))
 				ps := bankGenState.Supply.AmountOf(pool.PoolCoinDenom)
 				ammPool := amm.NewBasicPool(rx.Amount, ry.Amount, ps)
 
-				poolReserveAddressByBasicPool[pool.ReserveAddress] = PoolMetaData{
+				basicPoolByReserveAddress[pool.ReserveAddress] = PoolMetaData{
 					BasicPool: ammPool,
 					QuoteCoin: rx,
 					BaseCoin:  ry,
@@ -117,12 +110,26 @@ func main() {
 	reserveAddressSet[farmingtypes.StakingReserveAcc(Pool5CoinDenom).String()] = struct{}{}
 	reserveAddressSet[farmingtypes.StakingReserveAcc(Pool6CoinDenom).String()] = struct{}{}
 
-	lunaCal := sdk.ZeroInt()
-	ustCal := sdk.ZeroInt()
-	pool2Cal := sdk.ZeroInt()
-	pool4Cal := sdk.ZeroInt()
-	pool5Cal := sdk.ZeroInt()
-	pool6Cal := sdk.ZeroInt()
+	// resultByAddress stores result information
+	resultByAddress := map[string]*Result{} // Address => Result
+
+	// getLunaUSTAmt is reusable function
+	getLunaUSTAmt := func(poolCoin sdk.Coin) (lunaAmt, ustAmt sdk.Int) {
+		lunaAmt = sdk.ZeroInt()
+		ustAmt = sdk.ZeroInt()
+
+		pool := poolByPoolCoinDenom[poolCoin.Denom]
+		ammPool := basicPoolByReserveAddress[pool.ReserveAddress]
+		x, y := ammPool.BasicPool.Withdraw(poolCoin.Amount, sdk.ZeroDec())
+
+		if ammPool.BaseCoin.Denom == LUNADenom {
+			lunaAmt = lunaAmt.Add(y)
+		}
+		if ammPool.QuoteCoin.Denom == USTDenom {
+			ustAmt = ustAmt.Add(x)
+		}
+		return
+	}
 
 	// Parse holders and liquidity providers
 	for _, balance := range bankGenState.GetBalances() {
@@ -135,17 +142,38 @@ func main() {
 		for _, coin := range balance.GetCoins() {
 			switch coin.Denom {
 			case LUNADenom:
-				lunaCal = lunaCal.Add(coin.Amount)
+				if _, ok := resultByAddress[balance.Address]; !ok {
+					resultByAddress[balance.Address] = &Result{
+						LUNA: sdk.NewInt64Coin(LUNADenom, 0),
+						UST:  sdk.NewInt64Coin(USTDenom, 0),
+					}
+				}
+				resultByAddress[balance.Address].LUNA = resultByAddress[balance.Address].LUNA.Add(coin)
+				resultByAddress[balance.Address].Holder = true
+
 			case USTDenom:
-				ustCal = ustCal.Add(coin.Amount)
-			case Pool2CoinDenom: // bCRE / UST
-				pool2Cal = pool2Cal.Add(coin.Amount)
-			case Pool4CoinDenom: // LUNA / bCRE
-				pool4Cal = pool4Cal.Add(coin.Amount)
-			case Pool5CoinDenom: // ATOM / UST
-				pool5Cal = pool5Cal.Add(coin.Amount)
-			case Pool6CoinDenom: // LUNA / UST
-				pool6Cal = pool6Cal.Add(coin.Amount)
+				if _, ok := resultByAddress[balance.Address]; !ok {
+					resultByAddress[balance.Address] = &Result{
+						LUNA: sdk.NewInt64Coin(LUNADenom, 0),
+						UST:  sdk.NewInt64Coin(USTDenom, 0),
+					}
+				}
+				resultByAddress[balance.Address].UST = resultByAddress[balance.Address].UST.Add(coin)
+				resultByAddress[balance.Address].Holder = true
+
+			case Pool2CoinDenom, Pool4CoinDenom, Pool5CoinDenom, Pool6CoinDenom:
+				lunaAmt, ustAmt := getLunaUSTAmt(coin)
+
+				if _, ok := resultByAddress[balance.Address]; !ok {
+					resultByAddress[balance.Address] = &Result{
+						LUNA: sdk.NewInt64Coin(LUNADenom, 0),
+						UST:  sdk.NewInt64Coin(USTDenom, 0),
+					}
+				}
+				resultByAddress[balance.Address].UST = resultByAddress[balance.Address].UST.AddAmount(ustAmt)
+				resultByAddress[balance.Address].LUNA = resultByAddress[balance.Address].LUNA.AddAmount(lunaAmt)
+				resultByAddress[balance.Address].LiquidityProvider = true
+
 			default:
 				continue
 			}
@@ -155,74 +183,68 @@ func main() {
 	for _, record := range farmingGenState.StakingRecords {
 		switch record.StakingCoinDenom {
 		case LUNADenom:
-			lunaCal = lunaCal.Add(record.Staking.Amount)
+			resultByAddress[record.Farmer].LUNA = resultByAddress[record.Farmer].LUNA.AddAmount(record.Staking.Amount) // NOT FOUND
 		case USTDenom:
-			ustCal = ustCal.Add(record.Staking.Amount)
-		case Pool2CoinDenom:
-			pool2Cal = pool2Cal.Add(record.Staking.Amount)
-		case Pool4CoinDenom:
-			pool4Cal = pool4Cal.Add(record.Staking.Amount)
-		case Pool5CoinDenom:
-			pool5Cal = pool5Cal.Add(record.Staking.Amount)
-		case Pool6CoinDenom:
-			pool6Cal = pool6Cal.Add(record.Staking.Amount)
+			resultByAddress[record.Farmer].UST = resultByAddress[record.Farmer].UST.AddAmount(record.Staking.Amount) // NOT FOUND
+		case Pool2CoinDenom, Pool4CoinDenom, Pool5CoinDenom, Pool6CoinDenom:
+			lunaAmt, ustAmt := getLunaUSTAmt(sdk.NewCoin(record.StakingCoinDenom, record.Staking.Amount))
+			if _, ok := resultByAddress[record.Farmer]; !ok {
+				resultByAddress[record.Farmer] = &Result{
+					LUNA: sdk.NewInt64Coin(LUNADenom, 0),
+					UST:  sdk.NewInt64Coin(USTDenom, 0),
+				}
+			}
+			resultByAddress[record.Farmer].UST = resultByAddress[record.Farmer].UST.AddAmount(ustAmt)
+			resultByAddress[record.Farmer].LUNA = resultByAddress[record.Farmer].LUNA.AddAmount(lunaAmt)
+			resultByAddress[record.Farmer].Farmer = true
 		}
 	}
 
 	for _, record := range farmingGenState.QueuedStakingRecords {
 		switch record.StakingCoinDenom {
 		case LUNADenom:
-			lunaCal = lunaCal.Add(record.QueuedStaking.Amount)
+			resultByAddress[record.Farmer].LUNA = resultByAddress[record.Farmer].LUNA.AddAmount(record.QueuedStaking.Amount) // NOT FOUND
 		case USTDenom:
-			ustCal = ustCal.Add(record.QueuedStaking.Amount)
-		case Pool2CoinDenom:
-			pool2Cal = pool2Cal.Add(record.QueuedStaking.Amount)
-		case Pool4CoinDenom:
-			pool4Cal = pool4Cal.Add(record.QueuedStaking.Amount)
-		case Pool5CoinDenom:
-			pool5Cal = pool5Cal.Add(record.QueuedStaking.Amount)
-		case Pool6CoinDenom:
-			pool6Cal = pool6Cal.Add(record.QueuedStaking.Amount)
+			resultByAddress[record.Farmer].UST = resultByAddress[record.Farmer].UST.AddAmount(record.QueuedStaking.Amount) // NOT FOUND
+		case Pool2CoinDenom, Pool4CoinDenom, Pool5CoinDenom, Pool6CoinDenom:
+			lunaAmt, ustAmt := getLunaUSTAmt(sdk.NewCoin(record.StakingCoinDenom, record.QueuedStaking.Amount))
+			if _, ok := resultByAddress[record.Farmer]; !ok {
+				resultByAddress[record.Farmer] = &Result{
+					LUNA: sdk.NewInt64Coin(LUNADenom, 0),
+					UST:  sdk.NewInt64Coin(USTDenom, 0),
+				}
+			}
+			resultByAddress[record.Farmer].UST = resultByAddress[record.Farmer].UST.AddAmount(ustAmt)
+			resultByAddress[record.Farmer].LUNA = resultByAddress[record.Farmer].LUNA.AddAmount(lunaAmt)
+			resultByAddress[record.Farmer].Farmer = true
 		}
 	}
 
-	/*
-		[Supply]
-		LUNA:  78527370715
-		UST:  9715351474339
-		Pool2:  2346766210770531073
-		Pool4:  28254290233531039
-		Pool5:  122877799840887088
-		Pool6:  32018139414600667
+	// Dump result file
+	if err := dump(resultByAddress); err != nil {
+		panic(err)
+	}
 
-		[Result]
-		LUNA:  78527370715
-		UST:  9715351474339
-		Pool2:  2346766210770531073
-		Pool4:  28254290233531039
-		Pool5:  122877799840887088
-		Pool6:  32018139414600667
-	*/
+	// Debugging code
+	totalLUNAAmt, totalUSTAmt := sdk.ZeroInt(), sdk.ZeroInt()
+	for _, result := range resultByAddress {
+		totalLUNAAmt = totalLUNAAmt.Add(result.LUNA.Amount)
+		totalUSTAmt = totalUSTAmt.Add(result.UST.Amount)
+	}
 
 	fmt.Println("[Supply]")
-	fmt.Println("LUNA: ", lunaTotalSupply)
-	fmt.Println("UST: ", ustTotalSupply)
-	fmt.Println("Pool2: ", pool2TotalSupply)
-	fmt.Println("Pool4: ", pool4TotalSupply)
-	fmt.Println("Pool5: ", pool5TotalSupply)
-	fmt.Println("Pool6: ", pool6TotalSupply)
+	fmt.Println("Total LUNA: ", bankGenState.Supply.AmountOf(LUNADenom))
+	fmt.Println("Total UST: ", bankGenState.Supply.AmountOf(USTDenom))
 	fmt.Println("")
 	fmt.Println("[Result]")
-	fmt.Println("LUNA: ", lunaCal)
-	fmt.Println("UST: ", ustCal)
-	fmt.Println("Pool2: ", pool2Cal)
-	fmt.Println("Pool4: ", pool4Cal)
-	fmt.Println("Pool5: ", pool5Cal)
-	fmt.Println("Pool6: ", pool6Cal)
-
+	fmt.Println("Total LUNA: ", totalLUNAAmt)
+	fmt.Println("Total UST: ", totalUSTAmt)
+	fmt.Println("")
+	fmt.Println("LUNA Diff: ", bankGenState.Supply.AmountOf(LUNADenom).Sub(totalLUNAAmt))
+	fmt.Println("UST Diff: ", bankGenState.Supply.AmountOf(USTDenom).Sub(totalUSTAmt))
 }
 
-func dump(addrByResult map[string]Result) error {
+func dump(resultByAddress map[string]*Result) error {
 	f, err := os.OpenFile(resultFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -253,7 +275,7 @@ func dump(addrByResult map[string]Result) error {
 	farmerNum := 0
 	totalLUNAAmt := sdk.ZeroInt()
 	totalUSTAmt := sdk.ZeroInt()
-	for addr, result := range addrByResult {
+	for addr, result := range resultByAddress {
 		switch {
 		case result.Holder:
 			holderNum++

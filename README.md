@@ -19,7 +19,7 @@ go run main.go
 
 ## Result File Description
 
-Note that using Terra's bip44 coin type (330) can't be accomplished. `address_terra` column has conversion of crescent address that uses 118.
+Note that using Terra's bip44 coin type (330) can't be accomplished. `address_terra` column has conversion of crescent address that uses coin type (118).
 
 | Column | Type | Description | 
 |--------------------|----------|---------------------------------------------------------------------------|
