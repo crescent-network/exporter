@@ -19,12 +19,15 @@ go run main.go
 
 ## Result File Description
 
+Note that using Terra's bip44 coin type (330) can't be accomplished. `address_terra` column has conversion of crescent address that uses 118.
+
 | Column | Type | Description | 
-|-------------------|----------|---------------------------------------------------------------------------|
-| Address           | string   | The bech32 prefix address for Crescent                                    | 
-| LUNA              | sdk.Coin | The total LUNA Coin for an address                                        | 
-| UST               | sdk.Coin | The total UST Coin for an address                                         |
-| Holder            | bool     | Whether or not the address is holding either LUNA or UST in their balance |
-| LiquidityProvider | bool     | Whether or not the address is liquidity provider                          |
-| Farmer            | bool     | Whether or not the address is farming staker                              |
+|--------------------|----------|---------------------------------------------------------------------------|
+| address            | string   | The bech32 prefix address for Crescent (CoinType 118)                     | 
+| address_terra      | string   | The bech32 prefix address for Terra (CoinType 118)                        | 
+| luna               | sdk.Coin | The total LUNA Coin for an address                                        | 
+| ust                | sdk.Coin | The total UST Coin for an address                                         |
+| holder             | bool     | Whether or not the address is holding either LUNA or UST in their balance |
+| liquidity_provider | bool     | Whether or not the address is liquidity provider                          |
+| farmer             | bool     | Whether or not the address is farming staker                              |
 
