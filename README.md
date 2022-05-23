@@ -19,12 +19,12 @@ go run main.go
 
 ## Result File Description
 
-| Column | Type | Description | Example |
-|-------------------|----------|---------------------------------------------------------------------------|------------------------------------------------------------------------------|
-| Address           | string   | The bech32 prefix address for Crescent                                    | cre1xl76c72v0qyz6qhcehquypw6pytk32jeddvhwc                                   |
-| LUNA              | sdk.Coin | The total LUNA Coin for an address                                        | 0ibc/4627AD2524E3E0523047E35BB76CC90E37D9D57ACF14F0FCBCEB2480705F3CB8        |
-| UST               | sdk.Coin | The total UST Coin for an address                                         | 20532871ibc/6F4968A73F90CF7DE6394BF937D6DF7C7D162D74D839C13F53B41157D315E05F |
-| Holder            | bool     | Whether or not the address is holding either LUNA or UST in their balance | false                                                                        |
-| LiquidityProvider | bool     | Whether or not the address is liquidity provider                          | false                                                                        |
-| Farmer            | bool     | Whether or not the address is farming staker                              | true                                                                         |
+| Column | Type | Description | 
+|-------------------|----------|---------------------------------------------------------------------------|
+| Address           | string   | The bech32 prefix address for Crescent                                    | 
+| LUNA              | sdk.Coin | The total LUNA Coin for an address                                        | 
+| UST               | sdk.Coin | The total UST Coin for an address                                         |
+| Holder            | bool     | Whether or not the address is holding either LUNA or UST in their balance |
+| LiquidityProvider | bool     | Whether or not the address is liquidity provider                          |
+| Farmer            | bool     | Whether or not the address is farming staker                              |
 
