@@ -99,7 +99,8 @@ func main() {
 		}
 	}
 
-	// Collect reserve accounts
+	// reserveAddressSet saves all reserve accounts that need to be excluded
+	// when iterating GetBalances
 	reserveAddressSet := map[string]struct{}{} // ReserveAddress => struct
 	reserveAddressSet[liquidityGenState.Params.DustCollectorAddress] = struct{}{}
 	for _, pool := range liquidityGenState.Pools {
@@ -110,10 +111,7 @@ func main() {
 	reserveAddressSet[farmingtypes.StakingReserveAcc(Pool5CoinDenom).String()] = struct{}{}
 	reserveAddressSet[farmingtypes.StakingReserveAcc(Pool6CoinDenom).String()] = struct{}{}
 
-	// resultByAddress stores result information
-	resultByAddress := map[string]*Result{} // Address => Result
-
-	// getLunaUSTAmt is reusable function
+	// getLunaUSTAmt is reusable function when parsing LUNA and UST holders, lps, and farmers.
 	getLunaUSTAmt := func(poolCoin sdk.Coin) (lunaAmt, ustAmt sdk.Int) {
 		lunaAmt = sdk.ZeroInt()
 		ustAmt = sdk.ZeroInt()
@@ -131,10 +129,12 @@ func main() {
 		return
 	}
 
+	// resultByAddress stores result information
+	resultByAddress := map[string]*Result{} // Address => Result
+
 	// Parse holders and liquidity providers
 	for _, balance := range bankGenState.GetBalances() {
-		// Skip pool reserve address
-		_, ok := reserveAddressSet[balance.Address]
+		_, ok := reserveAddressSet[balance.Address] // skip addresses in reserve address set
 		if ok {
 			continue
 		}
@@ -180,6 +180,7 @@ func main() {
 		}
 	}
 
+	// Parsing farmers from staking records
 	for _, record := range farmingGenState.StakingRecords {
 		switch record.StakingCoinDenom {
 		case LUNADenom:
@@ -200,6 +201,7 @@ func main() {
 		}
 	}
 
+	// Parsing farmers from queued staking records
 	for _, record := range farmingGenState.QueuedStakingRecords {
 		switch record.StakingCoinDenom {
 		case LUNADenom:
@@ -225,23 +227,28 @@ func main() {
 		panic(err)
 	}
 
-	// Debugging code
+	// Verify total supply of LUNA and UST are the almost the same as results
+	verify(resultByAddress)
+}
+
+func verify(resultByAddress map[string]*Result) {
 	totalLUNAAmt, totalUSTAmt := sdk.ZeroInt(), sdk.ZeroInt()
 	for _, result := range resultByAddress {
 		totalLUNAAmt = totalLUNAAmt.Add(result.LUNA.Amount)
 		totalUSTAmt = totalUSTAmt.Add(result.UST.Amount)
 	}
 
-	fmt.Println("[Supply]")
-	fmt.Println("Total LUNA: ", bankGenState.Supply.AmountOf(LUNADenom))
-	fmt.Println("Total UST: ", bankGenState.Supply.AmountOf(USTDenom))
-	fmt.Println("")
-	fmt.Println("[Result]")
-	fmt.Println("Total LUNA: ", totalLUNAAmt)
-	fmt.Println("Total UST: ", totalUSTAmt)
-	fmt.Println("")
-	fmt.Println("LUNA Diff: ", bankGenState.Supply.AmountOf(LUNADenom).Sub(totalLUNAAmt))
-	fmt.Println("UST Diff: ", bankGenState.Supply.AmountOf(USTDenom).Sub(totalUSTAmt))
+	log.Println("[Supply]")
+	log.Println("Total LUNA: ", bankGenState.Supply.AmountOf(LUNADenom))
+	log.Println("Total UST: ", bankGenState.Supply.AmountOf(USTDenom))
+	log.Println("")
+	log.Println("[Result]")
+	log.Println("Total LUNA: ", totalLUNAAmt)
+	log.Println("Total UST: ", totalUSTAmt)
+	log.Println("")
+	log.Println("[Truncation]")
+	log.Println("LUNA Diff: ", bankGenState.Supply.AmountOf(LUNADenom).Sub(totalLUNAAmt))
+	log.Println("UST Diff: ", bankGenState.Supply.AmountOf(USTDenom).Sub(totalUSTAmt))
 }
 
 func dump(resultByAddress map[string]*Result) error {
