@@ -13,7 +13,11 @@ $UST peg failure leads to the following revival plan - [Terra Ecosystem Revival 
 ## Usage
 
 ```bash
-# Run the program; this will output `result.csv` file
+# Uncompress crescent-exported-350670.json file
+tar -xvf crescent-exported-350670.json.tar.gz
+
+# Run the program
+# This dumps csv file that contains snapshot data
 go run main.go
 ```
 
