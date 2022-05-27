@@ -1,6 +1,6 @@
 # Exporter
 
-This repository parses exported genesis state at [block height 350670](https://www.mintscan.io/crescent/blocks/350670) to extract data for LUNA and UST holders. 
+This repository parses exported genesis state at specific block height to extract data for LUNA and UST holders. 
 
 ## Background
 
@@ -10,16 +10,21 @@ $UST peg failure leads to the following revival plan - [Terra Ecosystem Revival 
 
 - Crescent [v1.1.0](https://github.com/crescent-network/crescent/releases/tag/v1.1.0)
 
+## Block Heights
+
+- [Pre-attack Block Height 350670](https://www.mintscan.io/crescent/blocks/350670)
+- [Post-attack Block Height 624034](https://www.mintscan.io/crescent/blocks/624034)
+
 ## Usage
 
 ```bash
-# Uncompress crescent-exported-350670.json file
-tar -xvf crescent-exported-350670.tar.gz
+# Uncompress crescent-exported-xxxxxx.json file
+tar -xvf crescent-exported-xxxxxx.tar.gz
 
-# Run the program
-# This dumps csv file that contains snapshot data
+# Run the program. This outputs .csv file that contains snapshot data.
 go run main.go
 ```
+
 
 ## Result File Description
 
