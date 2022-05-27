@@ -19,8 +19,8 @@ import (
 )
 
 var (
-	genFile    = "crescent-exported-350670.json"
-	resultFile = "result.csv"
+	genFile    = "crescent-exported-624034.json"
+	resultFile = "crescent-exported-624034.csv"
 
 	bankGenState      banktypes.GenesisState
 	liquidityGenState liquiditytypes.GenesisState
