@@ -19,8 +19,8 @@ import (
 )
 
 var (
-	genFile    = "crescent-exported-.json"
-	resultFile = "crescent-exported-.csv"
+	genFile    = "crescent-exported-536806.json"
+	resultFile = "crescent-exported-536806.csv"
 
 	bankGenState      banktypes.GenesisState
 	liquidityGenState liquiditytypes.GenesisState
@@ -28,9 +28,10 @@ var (
 )
 
 const (
-	ATOMDenom      = "ibc/C4CFF46FD6DE35CA4CF4CE031E643C8FDC9BA4B99AE598E9B0ED98FE3A2319F9"
-	Pool3CoinDenom = "pool3" // ATOM / bCRE
-	Pool5CoinDenom = "pool5" // ATOM / UST
+	ATOMDenom        = "ibc/C4CFF46FD6DE35CA4CF4CE031E643C8FDC9BA4B99AE598E9B0ED98FE3A2319F9"
+	Pool3CoinDenom   = "pool3" // ATOM / bCRE
+	Pool5CoinDenom   = "pool5" // ATOM / UST
+	Bech32AddrPrefix = "g"     // https://github.com/gnolang/gno/blob/master/pkgs/crypto/consts.go#L5
 )
 
 func init() {
@@ -49,7 +50,7 @@ func init() {
 }
 
 type Result struct {
-	ATOM              sdk.Coin // the total ATOM coin for an account
+	ATOM              sdk.Coin // the total amount of ATOM for an account
 	Holder            bool     // whether or not an account is ATOM holder
 	LiquidityProvider bool     // whether or not an account is liquidity provider for pools that correspond with ATOM
 	Farmer            bool     // whether or not an account is farmer for pools that correspond with ATOM
@@ -95,8 +96,7 @@ func main() {
 		}
 	}
 
-	// reserveAddressSet saves all reserve accounts that need to be excluded
-	// when iterating GetBalances
+	// reserveAddressSet saves all reserve accounts that need to be excluded when iterating GetBalances
 	reserveAddressSet := map[string]struct{}{} // ReserveAddress => struct
 	for _, pool := range liquidityGenState.Pools {
 		reserveAddressSet[pool.ReserveAddress] = struct{}{} // pool reserve address
@@ -203,19 +203,35 @@ func main() {
 }
 
 func verify(resultByAddress map[string]*Result) {
+	holderNum := 0
+	lpNum := 0
+	farmerNum := 0
+
 	totalATOMAmt := sdk.ZeroInt()
 	for _, result := range resultByAddress {
+		switch {
+		case result.Holder:
+			holderNum++
+		case result.LiquidityProvider:
+			lpNum++
+		case result.Farmer:
+			farmerNum++
+		}
 		totalATOMAmt = totalATOMAmt.Add(result.ATOM.Amount)
 	}
 
 	log.Println("[Supply]")
-	log.Println("Total ATOM: ", bankGenState.Supply.AmountOf(ATOMDenom))
+	log.Println("Total: ", bankGenState.Supply.AmountOf(ATOMDenom))
 	log.Println("")
 	log.Println("[Result]")
-	log.Println("Total ATOM: ", totalATOMAmt)
+	log.Println("Total: ", totalATOMAmt)
+	log.Println("Total #: ", holderNum+lpNum+farmerNum)
+	log.Println("Holders #", holderNum)
+	log.Println("LPs #", lpNum)
+	log.Println("Farmers #", farmerNum)
 	log.Println("")
-	log.Println("[Truncation]")
-	log.Println("Difference: ", bankGenState.Supply.AmountOf(ATOMDenom).Sub(totalATOMAmt))
+	log.Println("[Difference due to truncation]")
+	log.Println("Diff: ", bankGenState.Supply.AmountOf(ATOMDenom).Sub(totalATOMAmt))
 }
 
 func dump(resultByAddress map[string]*Result) error {
@@ -243,37 +259,19 @@ func dump(resultByAddress map[string]*Result) error {
 		return fmt.Errorf("failed to either write or flush: %w", err)
 	}
 
-	holderNum := 0
-	lpNum := 0
-	farmerNum := 0
-	totalATOMAmt := sdk.ZeroInt()
 	for addr, result := range resultByAddress {
-		switch {
-		case result.Holder:
-			holderNum++
-		case result.LiquidityProvider:
-			lpNum++
-		case result.Farmer:
-			farmerNum++
-		}
-
-		if result.ATOM.Denom == ATOMDenom {
-			totalATOMAmt = totalATOMAmt.Add(result.ATOM.Amount)
-		}
-
-		// Convert crescent address to terra
 		_, decoded, err := bech32.DecodeAndConvert(addr)
 		if err != nil {
 			return err
 		}
-		terraAddr, err := bech32.ConvertAndEncode("gno", decoded)
+		convertedAddr, err := bech32.ConvertAndEncode(Bech32AddrPrefix, decoded)
 		if err != nil {
 			return err
 		}
 
 		if err := w.Write([]string{
 			addr,
-			terraAddr,
+			convertedAddr,
 			result.ATOM.String(),
 			fmt.Sprint(result.Holder),
 			fmt.Sprint(result.LiquidityProvider),
@@ -283,15 +281,8 @@ func dump(resultByAddress map[string]*Result) error {
 		}
 		log.Printf("🏃 Writing content to %s file...\n", f.Name())
 	}
-	w.Flush()
 
-	log.Print("| -----Result------------------------------------------------------")
-	log.Printf("| # of Holders             : %d\n", holderNum)
-	log.Printf("| # of Liquidity Providers : %d\n", lpNum)
-	log.Printf("| # of Farmers             : %d\n", farmerNum)
-	log.Printf("| Total #                  : %d\n", holderNum+lpNum+farmerNum)
-	log.Printf("| Total ATOM Amount        : %s\n", totalATOMAmt)
-	log.Print("| -----------------------------------------------------------------")
+	w.Flush()
 
 	return nil
 }
