@@ -19,3 +19,6 @@
 
 # Result file
 *.csv
+
+# data
+data
